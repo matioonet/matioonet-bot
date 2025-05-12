@@ -1,6 +1,7 @@
 const { Telegraf } = require('telegraf');
 const sqlite3 = require('sqlite3').verbose();
 
+// توکن ربات
 const bot = new Telegraf('7796226856:AAEcPujXpNs7Tq7Ztw6EmOfonJVp02xpuBs');
 const ADMIN_ID = 'admiiiinnet'; // آیدی ادمین
 
@@ -20,7 +21,11 @@ const db = new sqlite3.Database('orders.db', (err) => {
         status TEXT,
         createdAt TEXT
       )
-    `);
+    `, (err) => {
+      if (err) {
+        console.error('خطا در ساخت جدول:', err.message);
+      }
+    });
   }
 });
 
@@ -92,6 +97,7 @@ const servers = {
 
 // دستور /start
 bot.start((ctx) => {
+  console.log('دستور /start اجرا شد برای کاربر:', ctx.from.id);
   ctx.reply('به ربات فیلترشکن **Matioo net** خوش اومدی! یه گزینه رو انتخاب کن:', {
     parse_mode: 'Markdown',
     reply_markup: {
@@ -99,14 +105,18 @@ bot.start((ctx) => {
         [{ text: 'انتخاب سرور', callback_data: 'servers' }],
         [{ text: 'تعرفه‌ها', callback_data: 'pricing' }],
         [{ text: 'سفارش‌های من', callback_data: 'myorders' }],
-        [{ text: 'پشتیبانی', callback_data: 'support' }]
+        [{ text: 'پشتیبانی', callback_data: 'support' }],
+        [{ text: 'همکاری در فروش', callback_data: 'affiliate' }]
       ]
     }
+  }).catch((err) => {
+    console.error('خطا در ارسال پیام خوش‌آمدگویی:', err.message);
   });
 });
 
 // دستور /myorders
 bot.command('myorders', (ctx) => {
+  console.log('دستور /myorders اجرا شد برای کاربر:', ctx.from.id);
   const userId = ctx.from.id;
   db.all(`SELECT * FROM orders WHERE userId = ?`, [userId], (err, rows) => {
     if (err) {
@@ -133,6 +143,7 @@ bot.command('myorders', (ctx) => {
 bot.on('callback_query', (ctx) => {
   const data = ctx.callbackQuery.data;
   const userId = ctx.callbackQuery.from.id;
+  console.log('دکمه کلیک شد:', data, 'توسط کاربر:', userId);
 
   if (data === 'servers') {
     ctx.editMessageText('یه سرور انتخاب کن:', {
@@ -148,6 +159,8 @@ bot.on('callback_query', (ctx) => {
           [{ text: 'بسته حجمی - V2Ray (بازی + VIP)', callback_data: 'server_v2ray_game_vip_volume' }]
         ]
       }
+    }).catch((err) => {
+      console.error('خطا در نمایش سرورها:', err.message);
     });
   } else if (data.startsWith('server_')) {
     const serverType = data.split('_').slice(1).join('_');
@@ -160,6 +173,8 @@ bot.on('callback_query', (ctx) => {
     );
     ctx.editMessageText(`سرور ${servers[serverType].name} انتخاب شد.\nحالا تعرفه رو انتخاب کن:`, {
       reply_markup: getPricingKeyboard(serverType)
+    }).catch((err) => {
+      console.error('خطا در نمایش تعرفه‌ها:', err.message);
     });
   } else if (data.startsWith('price_')) {
     const [_, serverType, key] = data.split('_');
@@ -181,7 +196,9 @@ bot.on('callback_query', (ctx) => {
       `یا از طریق لینک زیر پرداخت کن:\n` +
       `[پرداخت آنلاین](https://aqayepardakht.ir/matioonet)`,
       { parse_mode: 'Markdown' }
-    );
+    ).catch((err) => {
+      console.error('خطا در نمایش اطلاعات پرداخت:', err.message);
+    });
   } else if (data === 'pricing') {
     let message = 'تعرفه‌ها:\n\n';
     for (const server in servers) {
@@ -194,114 +211,4 @@ bot.on('callback_query', (ctx) => {
           message += `- ${key} گیگ: ${priceInfo.price.toLocaleString()} تومان\n`;
         }
       }
-      message += '\n';
-    }
-    ctx.editMessageText(message, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'انتخاب سرور', callback_data: 'servers' }]
-        ]
-      }
-    });
-  } else if (data === 'myorders') {
-    const userId = ctx.callbackQuery.from.id;
-    db.all(`SELECT * FROM orders WHERE userId = ?`, [userId], (err, rows) => {
-      if (err) {
-        console.error('خطا در گرفتن سفارش‌ها:', err.message);
-        ctx.reply('خطایی پیش اومد. لطفاً بعداً امتحان کن.');
-        return;
-      }
-      if (rows.length === 0) {
-        ctx.editMessageText('شما سفارشی ثبت نکردی.', {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: 'انتخاب سرور', callback_data: 'servers' }]
-            ]
-          }
-        });
-        return;
-      }
-      let message = 'سفارش‌های شما:\n';
-      rows.forEach((row, index) => {
-        message += `${index + 1}. سرور: ${row.server}\n`;
-        if (row.months) message += `مدت: ${row.months} ماه\n`;
-        if (row.volume) message += `حجم: ${row.volume} گیگ\n`;
-        message += `مبلغ: ${row.price.toLocaleString()} تومان\nوضعیت: ${row.status}\nتاریخ: ${row.createdAt}\n\n`;
-      });
-      ctx.editMessageText(message, {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'انتخاب سرور', callback_data: 'servers' }]
-          ]
-        }
-      });
-    });
-  } else if (data === 'support') {
-    ctx.editMessageText('برای پشتیبانی با ما تماس بگیر:\n@admiiiinnet');
-  }
-
-  ctx.answerCbQuery();
-});
-
-// مدیریت رسید
-bot.on('photo', (ctx) => {
-  const userId = ctx.from.id;
-  db.get(`SELECT * FROM orders WHERE userId = ? AND status = 'awaiting_receipt'`, [userId], (err, row) => {
-    if (err) {
-      console.error('خطا در بررسی سفارش:', err.message);
-      ctx.reply('خطایی پیش اومد. لطفاً بعداً امتحان کن.');
-      return;
-    }
-    if (!row) {
-      ctx.reply('لطفاً ابتدا یه سفارش ثبت کن.');
-      return;
-    }
-    db.run(
-      `UPDATE orders SET status = 'awaiting_confirmation' WHERE userId = ? AND status = 'awaiting_receipt'`,
-      [userId],
-      (err) => {
-        if (err) console.error('خطا در به‌روزرسانی وضعیت:', err.message);
-      }
-    );
-    const photo = ctx.message.photo[ctx.message.photo.length - 1]; // بالاترین کیفیت
-    const fileId = photo.file_id;
-    bot.telegram.sendPhoto(ADMIN_ID, fileId, {
-      caption: `سفارش جدید:\nکاربر: ${userId}\nسرور: ${row.server}\n` +
-               (row.months ? `مدت: ${row.months} ماه\n` : `حجم: ${row.volume} گیگ\n`) +
-               `مبلغ: ${row.price.toLocaleString()} تومان\n` +
-               `لطفاً بررسی کن و کانفیگ رو ارسال کن.`
-    });
-    ctx.reply('رسید شما ارسال شد. منتظر تأیید ادمین باش.');
-  });
-});
-
-// تابع برای ساخت کیبورد تعرفه‌ها
-function getPricingKeyboard(serverType) {
-  const prices = servers[serverType].prices;
-  const buttons = [];
-  for (const key in prices) {
-    const priceInfo = prices[key];
-    if (priceInfo.days) {
-      buttons.push([{ text: `${key} ماهه - ${priceInfo.price.toLocaleString()} تومان (${priceInfo.days} روز)`, callback_data: `price_${serverType}_${key}` }]);
-    } else {
-      buttons.push([{ text: `${key} گیگ - ${priceInfo.price.toLocaleString()} تومان`, callback_data: `price_${serverType}_${key}` }]);
-    }
-  }
-  buttons.push([{ text: 'بازگشت', callback_data: 'servers' }]);
-  return { inline_keyboard: buttons };
-}
-
-bot.launch();
-
-console.log('ربات شروع شد...');
-
-// بستن دیتابیس
-process.once('SIGINT', () => {
-  db.close();
-  bot.stop('SIGINT');
-});
-process.once('SIGTERM', () => {
-  db.close();
-  bot.stop('SIGTERM');
-});
+      message += '\n'; ​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
