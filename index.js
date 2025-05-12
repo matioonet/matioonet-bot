@@ -1,11 +1,12 @@
 const { Telegraf } = require('telegraf');
 const sqlite3 = require('sqlite3').verbose();
 
+// توکن ربات
 const bot = new Telegraf('7796226856:AAEcPujXpNs7Tq7Ztw6EmOfonJVp02xpuBs');
 const ADMIN_ID = 'admiiiinnet'; // آیدی ادمین
 
 // دیتابیس
-const db = new sqlite3.Database('orders.db', (err) => {
+const db = new sqlite3.Database('./orders.db', (err) => {
   if (err) {
     console.error('خطا در اتصال به دیتابیس:', err.message);
   } else {
@@ -167,10 +168,7 @@ bot.on('callback_query', (ctx) => {
       `INSERT INTO orders (userId, server, months, volume, price, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [userId, servers[serverType].name, 0, 0, 0, 'pending', new Date().toISOString()],
       (err) => {
-        if (err) {
-          console.error('خطا در ثبت سفارش:', err.message);
-          ctx.reply('خطایی پیش اومد. لطفاً دوباره امتحان کن.');
-        }
+        if (err) console.error('خطا در ثبت سفارش:', err.message);
       }
     );
     ctx.editMessageText(`سرور ${servers[serverType].name} انتخاب شد.\nحالا تعرفه رو انتخاب کن:`, {
@@ -188,10 +186,7 @@ bot.on('callback_query', (ctx) => {
       `UPDATE orders SET months = ?, volume = ?, price = ?, status = ? WHERE userId = ? AND status = 'pending'`,
       [months, volume, price, 'awaiting_receipt', userId],
       (err) => {
-        if (err) {
-          console.error('خطا در به‌روزرسانی سفارش:', err.message);
-          ctx.reply('خطایی پیش اومد. لطفاً دوباره امتحان کن.');
-        }
+        if (err) console.error('خطا در به‌روزرسانی سفارش:', err.message);
       }
     );
     ctx.editMessageText(
@@ -250,103 +245,4 @@ bot.on('callback_query', (ctx) => {
       rows.forEach((row, index) => {
         message += `${index + 1}. سرور: ${row.server}\n`;
         if (row.months) message += `مدت: ${row.months} ماه\n`;
-        if (row.volume) message += `حجم: ${row.volume} گیگ\n`;
-        message += `مبلغ: ${row.price.toLocaleString()} تومان\nوضعیت: ${row.status}\nتاریخ: ${row.createdAt}\n\n`;
-      });
-      ctx.editMessageText(message, {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'انتخاب سرور', callback_data: 'servers' }]
-          ]
-        }
-      });
-    });
-  } else if (data === 'support') {
-    ctx.editMessageText('برای پشتیبانی با ما تماس بگیر:\n@admiiiinnet');
-  } else if (data === 'affiliate') {
-    ctx.editMessageText('برای همکاری در فروش، به آیدی زیر پیام بدین:\n@admiiiinnet');
-  }
-
-  ctx.answerCbQuery().catch((err) => {
-    console.error('خطا در تأیید کلیک:', err.message);
-  });
-});
-
-// مدیریت رسید
-bot.on('photo', (ctx) => {
-  const userId = ctx.from.id;
-  console.log('عکس رسید دریافت شد از کاربر:', userId);
-  db.get(`SELECT * FROM orders WHERE userId = ? AND status = 'awaiting_receipt'`, [userId], (err, row) => {
-    if (err) {
-      console.error('خطا در بررسی سفارش:', err.message);
-      ctx.reply('خطایی پیش اومد. لطفاً بعداً امتحان کن.');
-      return;
-    }
-    if (!row) {
-      ctx.reply('لطفاً ابتدا یه سفارش ثبت کن.');
-      return;
-    }
-    db.run(
-      `UPDATE orders SET status = 'awaiting_confirmation' WHERE userId = ? AND status = 'awaiting_receipt'`,
-      [userId],
-      (err) => {
-        if (err) {
-          console.error('خطا در به‌روزرسانی وضعیت:', err.message);
-          ctx.reply('خطایی پیش اومد. لطفاً دوباره امتحان کن.');
-        }
-      }
-    );
-    const photo = ctx.message.photo[ctx.message.photo.length - 1];
-    const fileId = photo.file_id;
-    bot.telegram.sendPhoto(ADMIN_ID, fileId, {
-      caption: `سفارش جدید:\nکاربر: ${userId}\nسرور: ${row.server}\n` +
-               (row.months ? `مدت: ${row.months} ماه\n` : `حجم: ${row.volume} گیگ\n`) +
-               `مبلغ: ${row.price.toLocaleString()} تومان\n` +
-               `لطفاً بررسی کن و کانفیگ رو ارسال کن.`
-    }).catch((err) => {
-      console.error('خطا در ارسال رسید به ادمین:', err.message);
-      ctx.reply('خطایی در ارسال رسید به ادمین پیش اومد. لطفاً با پشتیبانی تماس بگیر.');
-    });
-    ctx.reply('رسید شما ارسال شد. منتظر تأیید ادمین باش.');
-  });
-});
-
-// تابع برای ساخت کیبورد تعرفه‌ها
-function getPricingKeyboard(serverType) {
-  const prices = servers[serverType].prices;
-  const buttons = [];
-  for (const key in prices) {
-    const priceInfo = prices[key];
-    if (priceInfo.days) {
-      buttons.push([{ text: `${key} ماهه - ${priceInfo.price.toLocaleString()} تومان (${priceInfo.days} روز)`, callback_data: `price_${serverType}_${key}` }]);
-    } else {
-      buttons.push([{ text: `${key} گیگ - ${priceInfo.price.toLocaleString()} تومان`, callback_data: `price_${serverType}_${key}` }]);
-    }
-  }
-  buttons.push([{ text: 'بازگشت', callback_data: 'servers' }]);
-  return { inline_keyboard: buttons };
-}
-
-// مدیریت خطاها
-bot.catch((err, ctx) => {
-  console.error(`خطا برای ${ctx.updateType}:`, err);
-});
-
-// شروع ربات
-bot.launch().then(() => {
-  console.log('ربات با موفقیت شروع شد.');
-}).catch((err) => {
-  console.error('خطا در شروع ربات:', err.message);
-});
-
-// بستن دیتابیس
-process.once('SIGINT', () => {
-  console.log('ربات متوقف شد.');
-  db.close();
-  bot.stop('SIGINT');
-});
-process.once('SIGTERM', () => {
-  console.log('ربات متوقف شد.');
-  db.close();
-  bot.stop('SIGTERM');
-});
+        if (row.volume) message += `ح ​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​
